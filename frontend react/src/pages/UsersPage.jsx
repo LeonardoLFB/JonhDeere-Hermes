@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 import Header from "../components/Header";
 import StatusBadge from "../components/StatusBadge";
-import { mockUsers } from "../data/mockData";
 import { COLORS, FONT, RADIUS, SHADOW } from "../design";
 
 const roleColors = {
@@ -11,7 +11,57 @@ const roleColors = {
 };
 
 export default function UsersPage() {
-  const [users] = useState(mockUsers);
+  const [users, setUsers] = useState([]); 
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newUser, setNewUser] = useState({ name: "", username: "", email: "", role: "Visualizador", status: "Pendente" });
+
+  useEffect(() => {
+    // 1. Colocamos o link completo de volta
+    axios.get("http://localhost:8081/api/usuarios")
+      .then(response => {
+        // BLINDAGEM: Só salva se for realmente uma lista (Array)
+        if (Array.isArray(response.data)) {
+          setUsers(response.data);
+        } else {
+          setUsers([]);
+        }
+      })
+      .catch(error => {
+        console.error("Erro ao buscar usuários:", error);
+        setUsers([]); // Em caso de erro, garante que continua sendo uma lista vazia
+      });
+  }, []);
+
+  const handleCreateUser = async () => {
+    if (!newUser.name || !newUser.email) {
+      alert("Por favor, preencha os campos obrigatórios (Nome e E-mail)!");
+      return;
+    }
+    try {
+      await axios.post("http://localhost:8081/api/usuarios", newUser);
+      const response = await axios.get("http://localhost:8081/api/usuarios");
+      
+      // BLINDAGEM aqui também
+      setUsers(Array.isArray(response.data) ? response.data : []);
+      
+      setIsModalOpen(false);
+      setNewUser({ name: "", username: "", email: "", role: "Visualizador", status: "Pendente" });
+    } catch (error) {
+      console.error("Erro ao criar usuário:", error);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Tem certeza que deseja excluir este usuário definitivamente?")) {
+      try {
+        await axios.delete(`http://localhost:8081/api/usuarios/${id}`);
+        setUsers(users.filter(u => u.id !== id)); 
+      } catch (error) {
+        console.error("Erro ao excluir usuário:", error);
+        alert("Erro ao excluir. Verifique se o backend está rodando corretamente.");
+      }
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24, fontFamily: FONT }}>
@@ -19,7 +69,9 @@ export default function UsersPage() {
         title="Usuários"
         subtitle="Gestão de acessos e permissões da plataforma"
         action={
-          <button style={{
+          <button 
+          onClick={() => setIsModalOpen(true)}
+          style={{
             display: "flex", alignItems: "center", gap: 8,
             background: COLORS.green, color: "#fff",
             border: "none", borderRadius: RADIUS.md,
@@ -34,10 +86,10 @@ export default function UsersPage() {
         }
       />
 
-      {/* Resumo por role */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
         {["Administrador", "Operador", "Visualizador"].map((role) => {
-          const count = users.filter((u) => u.role === role).length;
+          // BLINDAGEM VISUAL: garante que o 'users' nunca será null aqui
+          const count = (users || []).filter((u) => u.role === role).length;
           const rc = roleColors[role] || {};
           return (
             <div key={role} style={{
@@ -55,7 +107,6 @@ export default function UsersPage() {
         })}
       </div>
 
-      {/* Tabela */}
       <div style={{
         background: COLORS.surface, borderRadius: RADIUS.lg,
         border: `1px solid ${COLORS.border}`, boxShadow: SHADOW.card,
@@ -78,7 +129,8 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => {
+              {/* BLINDAGEM VISUAL: garante que não quebra no map */}
+              {(users || []).map((u) => {
                 const rc = roleColors[u.role] || {};
                 return (
                   <tr key={u.id} style={{ borderBottom: `1px solid ${COLORS.borderLight}` }}>
@@ -90,7 +142,7 @@ export default function UsersPage() {
                           display: "flex", alignItems: "center", justifyContent: "center",
                           fontWeight: 800, fontSize: 14, flexShrink: 0,
                         }}>
-                          {u.name[0]}
+                          {u.name ? u.name[0] : '?'}
                         </div>
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary }}>{u.name}</div>
@@ -126,13 +178,15 @@ export default function UsersPage() {
                         }}>
                           Editar
                         </button>
-                        <button style={{
+                        <button 
+                          onClick={() => handleDelete(u.id)}
+                          style={{
                           padding: "5px 12px", borderRadius: RADIUS.sm,
                           border: `1px solid ${COLORS.dangerBorder}`,
                           background: COLORS.dangerBg, color: COLORS.danger,
                           fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FONT,
                         }}>
-                          {u.status === "active" ? "Desativar" : "Ativar"}
+                          Excluir
                         </button>
                       </div>
                     </td>
@@ -143,6 +197,29 @@ export default function UsersPage() {
           </table>
         </div>
       </div>
+      
+      {isModalOpen && (
+        <div style={{ padding: 20, background: '#fff', border: '1px solid #ccc', margin: 20 }}>
+          <h3>Novo Usuário</h3>
+          <input placeholder="Nome" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} style={{ display: 'block', marginBottom: 10, padding: 8, width: '100%' }} />
+          <input placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} style={{ display: 'block', marginBottom: 10, padding: 8, width: '100%' }} />
+          <input placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} style={{ display: 'block', marginBottom: 10, padding: 8, width: '100%' }} />
+          
+          <label style={{ fontSize: 12, display: 'block', marginBottom: 5 }}>Perfil:</label>
+          <select 
+            value={newUser.role} 
+            onChange={e => setNewUser({...newUser, role: e.target.value})}
+            style={{ display: 'block', marginBottom: 15, padding: 8, width: '100%' }}
+          >
+            <option value="Administrador">Administrador</option>
+            <option value="Operador">Operador</option>
+            <option value="Visualizador">Visualizador</option>
+          </select>
+
+          <button onClick={handleCreateUser} style={{ marginRight: 10, padding: '8px 16px', background: COLORS.green, color: '#fff', border: 'none', cursor: 'pointer' }}>Salvar no Banco</button>
+          <button onClick={() => setIsModalOpen(false)} style={{ padding: '8px 16px', cursor: 'pointer' }}>Cancelar</button>
+        </div>
+      )}
     </div>
   );
 }
